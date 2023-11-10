@@ -1,5 +1,9 @@
 # Vault as OIDC Provider - JWT Auth
 
+
+
+![OIDC/JWT Auth Workflow](./jwt-auth.png)
+
 Links:
 
 - [Vault as an OIDC identity provider](https://developer.hashicorp.com/vault/tutorials/auth-methods/oidc-identity-provider)
