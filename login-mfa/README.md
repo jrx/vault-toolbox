@@ -409,6 +409,53 @@ vault login -method=userpass username=jan
 vault write auth/userpass/users/jan/password password=bar
 ```
 
+## Secondary LDAP auth method for MFA onboarding
+
+As an alternative to the `userpass` method, you can configure a second LDAP auth method using the same existing LDAP backend. In this secondary configuration, set `groupattr` to an empty value to disable automatic LDAP group imports. This setup behaves similarly to the `userpass` fallback method but allows users to utilize their LDAP credentials consistently across all workflows.
+
+```sh
+vault auth enable -path=onboard ldap
+
+vault write auth/onboard/config \
+    url="ldap://localhost" \
+    userattr=uid \
+    userdn="ou=people,dc=example,dc=org" \
+    groupdn="ou=people,dc=example,dc=org" \
+    groupfilter="(&(objectClass=inetOrgPerson)(uid={{.Username}}))" \
+    groupattr="" \
+    binddn="cn=admin,dc=example,dc=org" \
+    bindpass='admin' \
+    insecure_tls=true \
+    starttls=false \
+    token_policies="onboard-policy"
+
+vault auth tune -listing-visibility='unauth' onboard
+
+vault auth list -format=json \
+  | jq -r '.["onboard/"].accessor' \
+  > /tmp/accessor_onboard.txt
+  
+tee /tmp/onboard-policy.hcl <<EOF
+path "/identity/mfa/method/totp/generate" {
+  capabilities = ["create", "read", "list", "update"]
+  required_parameters = ["method_id"]
+}
+path "sys/auth" {  
+  capabilities = [ "read" ]  
+} 
+EOF
+
+vault policy write onboard-policy /tmp/onboard-policy.hcl 
+
+vault auth list -format=json \
+  | jq -r '.["onboard/"].accessor' \
+  > /tmp/accessor_onboard.txt
+
+vault write identity/entity-alias name="jan" \
+     canonical_id=$(cat /tmp/entity_id_jan.txt) \
+     mount_accessor=$(cat /tmp/accessor_onboard.txt)
+```
+
 ## Admin resets the MFA for a User
 
 ### Option 1) Admin regenerates QR code
@@ -451,4 +498,8 @@ vault write identity/entity-alias name="jan" \
 vault write identity/entity-alias name="jan" \
      canonical_id=$(cat /tmp/entity_id_jan.txt) \
      mount_accessor=$(cat /tmp/accessor_ldap.txt)
+
+vault write identity/entity-alias name="jan" \
+     canonical_id=$(cat /tmp/entity_id_jan.txt) \
+     mount_accessor=$(cat /tmp/accessor_onboard.txt)
 ```
